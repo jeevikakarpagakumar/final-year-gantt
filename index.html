@@ -14,7 +14,7 @@
     *{box-sizing:border-box}
     html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
     .app{display:grid;grid-template-columns:300px 1fr;min-height:100vh}
-    aside{background:var(--panel-2);border-right:1px solid var(--line);padding:16px;position:sticky;top:0;height:100vh}
+    aside{background:var(--panel-2);border-right:1px solid var(--line);padding:16px;position:sticky;top:0;height:100vh;overflow:auto}
     main{padding:18px}
     h1{font-size:22px;margin:0 0 6px}
     .muted{color:var(--dim);font-size:12px}
@@ -54,14 +54,8 @@
 <div class="app">
   <aside>
     <h1>Progress Dashboard</h1>
-    <div class="muted">Gantt view • June → Oct 2025</div>
-    <div class="legend">
-      <div class="lg"><span class="dot" style="background:#5aa8ff"></span> Planning</div>
-      <div class="lg"><span class="dot" style="background:#51d69a"></span> Data</div>
-      <div class="lg"><span class="dot" style="background:#c6a5ff"></span> Modeling</div>
-      <div class="lg"><span class="dot" style="background:#ffb86b"></span> Meetings</div>
-      <div class="lg"><span class="dot" style="background:#ff6b6b"></span> Reviews</div>
-    </div>
+    <div class="muted" id="subtitle">Gantt view • (auto)</div>
+    <div class="legend" id="legend"></div>
     <div class="stat">
       <div class="kv"><h4>Total tasks</h4><p id="statTasks">–</p></div>
       <div class="kv"><h4>Span</h4><p id="statSpan">–</p></div>
@@ -128,6 +122,30 @@ const tasks = [
   t('Configuration of transcription model','2025-09-16','2025-09-25','task','Modeling'),
   t('I/O format for transcription model','2025-09-18','2025-09-22','task','Modeling'),
   t('Setting up the classification model','2025-09-21','2025-10-02','task','Modeling'),
+  // ——— Phase 1: Preparation & Data ———
+  t('Activity 8','2025-10-29','2025-11-03','task','Phase 1: Preparation & Data'),
+  t('Data Collection','2025-11-01','2025-11-11','task','Phase 1: Preparation & Data'),
+  t('Activity 9','2025-11-07','2025-11-09','task','Phase 1: Preparation & Data'),
+  t('Dataset Preprocessing','2025-11-12','2025-11-30','task','Phase 1: Preparation & Data'),
+  t('Activity 10','2025-11-13','2025-12-13','task','Phase 1: Preparation & Data'),
+  t('Activity 11','2025-11-15','2025-12-08','task','Phase 1: Preparation & Data'),
+  t('Transcription Model Improvement','2025-11-20','2025-11-30','task','Phase 1: Preparation & Data'),
+  t('Activity 12','2025-11-23','2025-11-28','task','Phase 1: Preparation & Data'),
+
+  // ——— Phase 2: Core Work ———
+  t('Transcription of preprocessed data','2025-12-01','2025-12-08','task','Phase 2: Core Work'),
+  t('First Training Run','2025-12-09','2025-12-19','task','Phase 2: Core Work'),
+  t('Documentation of First Run Results','2025-12-20','2026-01-19','task','Phase 2: Core Work'),
+  t('Improvements to Model','2025-12-20','2026-01-19','task','Phase 2: Core Work'),
+
+  // ——— Phase 3: Extended Development ———
+  t('Literature Survey (parallel with improvements)','2026-01-05','2026-01-15','task','Phase 3: Extended Development'),
+  t('Second Training Run','2026-01-20','2026-02-10','task','Phase 3: Extended Development'),
+  t('Third Training Run','2026-02-11','2026-02-28','task','Phase 3: Extended Development'),
+
+  // ——— Phase 4: Wrap-up & Deliverables ———
+  t('Final Improvements + Validation','2026-03-01','2026-03-07','task','Phase 4: Wrap-up & Deliverables'),
+  t('Paper Writing (first full draft before ISMIR prep)','2026-03-08','2026-03-15','task','Phase 4: Wrap-up & Deliverables')
 ].map((d,i)=>({...d,id:i+1}));
 
 function t(name,start,end,type='task',phase='General'){
@@ -135,7 +153,11 @@ function t(name,start,end,type='task',phase='General'){
 }
 
 const PHASE_COLORS = {
-  'Planning':'#5aa8ff','Data':'#51d69a','Modeling':'#c6a5ff','Meetings':'#ffb86b','Reviews':'#ff6b6b','General':'#6cc5ff'
+  'Planning':'#5aa8ff','Data':'#51d69a','Modeling':'#c6a5ff','Meetings':'#ffb86b','Reviews':'#ff6b6b','General':'#6cc5ff',
+  'Phase 1: Preparation & Data':'#7dd3fc',
+  'Phase 2: Core Work':'#fca5a5',
+  'Phase 3: Extended Development':'#fde68a',
+  'Phase 4: Wrap-up & Deliverables':'#86efac'
 };
 
 // ——— Elements & Setup ———
@@ -159,24 +181,40 @@ function computeRange(list){
   let e = list.reduce((m,t)=> t.end > m ? t.end : m, list[0].end);
   s = addDays(s,-3); e = addDays(e,3); return {start:s,end:e};
 }
+function fmtShort(d){ return d.toLocaleDateString(undefined,{month:'short', year:'numeric'}); }
+
+function buildLegend(){
+  const el = document.getElementById('legend');
+  el.innerHTML = '';
+  Object.entries(PHASE_COLORS).forEach(([k,v])=>{
+    const item = document.createElement('div');
+    item.className = 'lg';
+    item.innerHTML = `<span class="dot" style="background:${v}"></span>${k}`;
+    el.appendChild(item);
+  });
+}
 
 function render(){
   const q = (search.value||'').toLowerCase();
   const groupBy = groupBySel.value;
-  let filtered = tasks.filter(t=> t.name.toLowerCase().includes(q) || t.phase.toLowerCase().includes(q));
+  const filtered = tasks.filter(t=> t.name.toLowerCase().includes(q) || t.phase.toLowerCase().includes(q));
 
   // stats
   const rangeAll = computeRange(filtered.length?filtered:tasks);
   document.getElementById('statTasks').textContent = filtered.length;
   document.getElementById('statSpan').textContent = `${fmt(rangeAll.start)} → ${fmt(rangeAll.end)}`;
+  const subtitle = document.getElementById('subtitle'); if(subtitle){ subtitle.textContent = `Gantt view • ${fmtShort(rangeAll.start)} → ${fmtShort(rangeAll.end)}`; }
 
   // grouping
   let rows = [];
-  if(groupBy==='none'){ rows = filtered; }
-  else {
+  if(groupBy==='none'){
+    rows = filtered;
+  } else {
     const groups = {};
     for(const tk of filtered){ (groups[tk[groupBy]] = groups[tk[groupBy]] || []).push(tk); }
-    rows = Object.entries(groups).flatMap(([g,list])=> [{isGroup:true,name:g}, ...list]);
+    rows = Object.entries(groups)
+      .sort(([a],[b])=> a.localeCompare(b))
+      .flatMap(([g,list])=> [{isGroup:true,name:g}, ...list]);
   }
 
   const range = computeRange(filtered.length?filtered:tasks);
@@ -304,6 +342,7 @@ document.getElementById('exportPNG').addEventListener('click', ()=>{
   img.src = svg64;
 });
 
+buildLegend();
 render();
 </script>
 </body>
